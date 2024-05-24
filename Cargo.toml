@@ -1,0 +1,21 @@
+[package]
+name = "sqlx_binder"
+version = "0.1.0"
+edition = "2021"
+authors = ["Marisada Pitakthum <p.marisada@gmail.com>"]
+description = "A procedural macro to get and set a struct field by String dynamically." 
+license = "MIT"
+repository = "https://github.com/Marisada/sqlx_binder"
+categories = ["data-structures"]
+keywords = ["sqlx", "binder", "proc-macro"]
+readme = "README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = {version = "1.0", features = ["full", "extra-traits"]}
+quote = "1.0"
+
+[dev-dependencies]
+sqlx = { version = "0.7", features = [ "runtime-tokio-native-tls" , "mysql", "time" ] }
