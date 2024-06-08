@@ -180,10 +180,54 @@ mod tests_skip {
             sex: "male".to_string(),
             life_expectancy: 9,
         };
+        let field_names = dog.get_field_names();
+        let mut iter = field_names.iter();
+        assert_eq!(iter.next(), Some("name").as_ref());
+        assert_eq!(iter.next(), Some("life_expectancy").as_ref());
+        assert_eq!(iter.next(), None);
         let field_enums = dog.get_field_enums();
         assert_eq!(dog.age, 3);
         assert_eq!(dog.sex, String::from("male"));
         assert_eq!(field_enums[0], SkipperFieldEnum::name("Taro".to_string()));
         assert_eq!(field_enums[1], SkipperFieldEnum::life_expectancy(9));
+    }
+}
+
+
+#[cfg(test)]
+mod tests_rename {
+
+    use sqlx_binder::MySqlBinder;
+
+    #[derive(MySqlBinder)]
+    struct Renamer {
+        name: String,
+        #[sqlx_binder(rename = "year")]
+        age: u32,
+        #[sqlx_binder(rename = "gender")]
+        sex: String,
+        life_expectancy: u32,
+    }
+
+    #[test]
+    fn test_rename() {
+        let dog = Renamer {
+            name: "Taro".to_string(),
+            age: 3,
+            sex: "male".to_string(),
+            life_expectancy: 9,
+        };
+        let field_names = dog.get_field_names();
+        let mut iter = field_names.iter();
+        assert_eq!(iter.next(), Some("name").as_ref());
+        assert_eq!(iter.next(), Some("year").as_ref());
+        assert_eq!(iter.next(), Some("gender").as_ref());
+        assert_eq!(iter.next(), Some("life_expectancy").as_ref());
+        assert_eq!(iter.next(), None);
+        let field_enums = dog.get_field_enums();
+        assert_eq!(field_enums[0], RenamerFieldEnum::name("Taro".to_string()));
+        assert_eq!(field_enums[1], RenamerFieldEnum::age(3));
+        assert_eq!(field_enums[2], RenamerFieldEnum::sex("male".to_string()));
+        assert_eq!(field_enums[3], RenamerFieldEnum::life_expectancy(9));
     }
 }

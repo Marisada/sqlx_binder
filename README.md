@@ -52,13 +52,26 @@ with
 ```
 
 ## Field Attribute
+### rename
+```rust
+#[derive(MySqlBinder)]
+struct Dog {
+    name: String,
+    age: u32,
+    #[sqlx_binder(rename = "gender")]
+    sex: u32,
+}
+```
+get_field_names method will return ["name", "age", "gender"]
+> Note: DogFieldEnum of sex NOT change, still `DogFieldEnum::sex(u32)`
+
 ### skip
 ```rust
 #[derive(MySqlBinder)]
 struct Dog {
     name: String,
     age: u32,
-    #[sqlx_binding(skip)]
+    #[sqlx_binder(skip)]
     life_expectancy: u32,
 }
 ```
@@ -86,7 +99,7 @@ fn get_struct_name(&self) -> '&'static str';
 get a struct's names, in UpperCamelCase string
 > most sql database converts all table names to lowercase on storage and lookup,  
 > so 'SomeStructName' will be 'somestructname'.. not 'some_struct_name'
-> but we need snake_case so look below
+> but we need a snake_case one so look below
 
 ### `get_struct_name_snake`
 ```rust
@@ -123,9 +136,9 @@ use sqlx::{
 struct Dog {
     name: String,
     age: u32,
-    life_expectancy: u32,
     #[sqlx_binder(skip)]
     sex: String,
+    life_expectancy: u32,
 }
 
 #[tokio::main]
@@ -158,8 +171,8 @@ async fn main() {
     let mut dog = Dog {
         name: "Taro".to_string(),
         age: 3,
-        life_expectancy: 9,
         sex: "male".to_string(),
+        life_expectancy: 9,
     };
 
     // dog.get_struct_name() return 'Dog' but our table name is 'dog',   

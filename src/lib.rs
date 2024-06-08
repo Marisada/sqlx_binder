@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use syn::{parse_macro_input, AttrStyle, Attribute, DeriveInput, FieldsNamed, Ident, Meta};
 
 mod attrs;
-use attrs::{ParseAttribute, FieldAttribute};
+use attrs::{FieldAttribute, FieldAttributes};
 
 #[proc_macro_derive(MySqlBinder, attributes(sqlx_binder))]
 pub fn derive(input: TokenStream) -> TokenStream {
@@ -15,7 +15,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 let mut named_mut = named.clone();
                 let idents_filtered = named.iter()
                     .filter(|f| {
-                        let attrs = attributes::<FieldAttribute>(&f.attrs);
+                        let attrs = attributes(&f.attrs);
                         match attrs.first() {
                             Some(attr) => !matches!(attr, FieldAttribute::Skip),
                             None => true,
@@ -23,7 +23,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     });
                 let idents_getfield = named_mut.iter_mut()
                     .filter_map(|f| {
-                        let attrs = attributes::<FieldAttribute>(&f.attrs);
+                        let attrs = attributes(&f.attrs);
                         match attrs.first() {
                             Some(FieldAttribute::Skip) => None,
                             Some(FieldAttribute::Rename(val)) => Some(f.ident.as_ref().map(|id| Ident::new(val, id.span()))),
@@ -118,7 +118,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     output.into()
 }
 
-fn attributes<A: ParseAttribute>(attrs: &[Attribute]) -> Vec<A> {
+fn attributes(attrs: &[Attribute]) -> Vec<FieldAttribute> {
     let mut res = Vec::new();
 
     for attr in attrs {
@@ -127,7 +127,7 @@ fn attributes<A: ParseAttribute>(attrs: &[Attribute]) -> Vec<A> {
         }
 
         let attr_name = attr
-            .path
+            .path()
             .segments
             .iter()
             .last()
@@ -138,13 +138,10 @@ fn attributes<A: ParseAttribute>(attrs: &[Attribute]) -> Vec<A> {
             continue;
         }
 
-        let meta = attr
-            .parse_meta()
-            .expect("unable to parse attribute to meta");
-
-        if let Meta::List(l) = meta {
-            for arg in l.nested {
-                res.push(A::parse(&arg));
+        if let Meta::List(list) = &attr.meta {
+            match list.parse_args::<FieldAttributes>() {
+                Ok(items) => res.extend(items.attrs),
+                Err(e) => panic!("Error parsing field attributes: {}", e),
             }
         }
     }

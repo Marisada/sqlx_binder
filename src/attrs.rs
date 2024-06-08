@@ -1,8 +1,7 @@
-use syn::{Lit, NestedMeta, Meta, MetaNameValue};
-
-pub trait ParseAttribute {
-    fn parse(m: &NestedMeta) -> Self;
-}
+use syn::{
+    Expr, Lit, Meta, MetaNameValue,
+    parse::{Parse, ParseStream},
+};
 
 #[derive(Debug)]
 pub enum FieldAttribute {
@@ -10,25 +9,40 @@ pub enum FieldAttribute {
     Rename(String),
 }
 
-impl ParseAttribute for FieldAttribute {
-    fn parse(m: &NestedMeta) -> Self {
-        match m {
-            NestedMeta::Meta(m) => match m {
+pub struct FieldAttributes {
+    pub attrs: Vec<FieldAttribute>,
+}
+
+impl Parse for FieldAttributes {
+    #[inline]
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let mut attrs: Vec<FieldAttribute> = vec![];
+
+        loop {
+            if input.is_empty() {
+                break;
+            }
+
+            let meta = input.parse::<Meta>()?;
+            match meta {
                 Meta::NameValue(MetaNameValue {
                     path,
-                    lit: Lit::Str(val),
+                    value,
                     ..
-                }) if path.is_ident("rename") => Self::Rename(val.value()),
-                Meta::Path(path) if path.is_ident("skip") => Self::Skip,
+                }) => if path.is_ident("rename") {
+                    if let Expr::Lit(expr_lit) = value {
+                        if let Lit::Str(val) = expr_lit.lit {
+                            attrs.push(FieldAttribute::Rename(val.value()))
+                        }
+                    }
+                }
+                Meta::Path(path) if path.is_ident("skip") => attrs.push(FieldAttribute::Skip),
                 u => panic!("unexpected '{:?}' attribute", u.path()),
-            },
-
-            // NestedMeta::Meta(m) => match m.path().get_ident() {
-            //     Some(i) if i == "skip" => Self::Skip,
-            //     _ => panic!("unable to parse attribute"),
-            // },
-
-            NestedMeta::Lit(_) => panic!("unable to parse attribute"),
+            }
         }
+
+        Ok(FieldAttributes {
+            attrs,
+        })
     }
 }
