@@ -130,7 +130,7 @@ mod tests_multiple_derive {
 #[cfg(test)]
 mod tests_binding {
 
-    use sqlx::Execute;
+    use sqlx::{Arguments, Execute};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
@@ -152,7 +152,7 @@ mod tests_binding {
         for param in params {
             query = param.bind(query);
         } 
-        assert_eq!(query.take_arguments().unwrap().len(), 3);
+        assert_eq!(query.take_arguments().unwrap().unwrap().len(), 3);
     }
 }
 
