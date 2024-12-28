@@ -7,41 +7,38 @@ from Struct
 ```rust
 #[derive(MySqlBinder)]
 struct Dog {
+    id: u32,
     name: String,
     age: u32,
     life_expectancy: u32,
 }
 ```
 
-generate Enum
+will generate Enum
 
 ```rust
 enum DogFieldEnum {
+    id(u32),
     name(String),
     age(u32),
     life_expectancy(u32),
 }
 ```
 
-with `bind` method to bind `sqlx::query::Query` type as below
-```rust
-let query: sqlx::query::Query<'_, sqlx::MySql, sqlx::mysql::MySqlArguments> = sqlx::query(&sql);
-```
-
-### `bind`
+with `bind` method to bind `sqlx::Query` type as below
 ```rust
 fn bind(&self, query: sqlx::Query) -> sqlx::Query;
 ```
-bind FieldEnum's value to sqlx's Query like
-
+instead of write `bind()` all fields like..
 ```rust
     let result = sqlx::Query(&sql)
+        .bind(&dog.id)
         .bind(&dog.name)
         .bind(&dog.age)
         .bind(&dog.life_expectancy)
         .execute(&pool).await?;
 ```
-with
+using `bind` to binding FieldEnum's value with sqlx's Query in loop like
 ```rust
     let params = dog.get_field_enums(); 
     let mut query = sqlx::query(&sql);
@@ -51,7 +48,7 @@ with
     let result = query.execute(&pool).await?;
 ```
 
-## Field Attribute
+## Field Attributes
 ### rename
 ```rust
 #[derive(MySqlBinder)]
@@ -83,18 +80,48 @@ enum DogFieldEnum {
 }
 ```
 
-## Struct Method
+## Struct Methods
+
+### `insert`
+```rust
+async fn insert( &self, primary_key: Option<&str>, custom_column: &str, custom_statement: &str, custom_values: &[&str], pool: &Pool<MySql>, db_name: &str) -> sqlx::Result<MySqlQueryResult>
+```
+insert to database using sql
+```sql
+    INSERT INTO pet_database.dog (name,age,life_expectancy,create_user,create_datetime) VALUE (?,?,?,?,now());
+```
+by calling `dog.insert()` like..
+```rust
+    let pool = MySqlPoolOptions::new().connect_with("mysql://user:pass@localhost:3306").await;
+    let result = dog.insert(Some("id"), ",create_user,create_datetime", ",?,now()", &["my_name"], pool, "pet_database").await.unwrap();
+    assert_eq!(result.rows_affected(), 1);
+```
+
+### `update`
+```rust
+async fn update(&self, primary_key: &str, custom_column: &str, custom_values: &[&str], pool: &Pool<MySql>, db_name: &str) -> sqlx::Result<MySqlQueryResult>
+```
+update to database using sql
+```sql
+    UPDATE pet_database.dog SET name=?,age=?,life_expectancy=?,update_user=?,update_datetime=now() WHERE id=?;
+```
+by calling `dog.update()` like..
+```rust
+    let pool = MySqlPoolOptions::new().connect_with("mysql://user:pass@localhost:3306").await;
+    let result = dog.update("id", ",update_user=?,update_datetime=now()", &["my_name"], pool, "pet_database").await.unwrap();
+    assert_eq!(result.rows_affected(), 1);
+```
 
 ### `get_enum`
 ```rust
-fn get_enum(&self, field_string: &String) -> Result<StructNameFieldEnum, String>;
+fn get_enum(&self, field_string: &String) -> Result<StructNameFieldEnum, String>
 ```
 get a single enum of field's value. Enum name is `Struct name` + `FieldEnum`.  
 with varients such as `MyStructFieldEnum::Name(String)` from MyStruct { name: String }
 
 ### `get_struct_name`
 ```rust
-fn get_struct_name(&self) -> '&'static str';
+fn get_struct_name(&self) -> '&'static str'
 ```
 get a struct's names, in UpperCamelCase string
 > most sql database converts all table names to lowercase on storage and lookup,  
@@ -103,29 +130,26 @@ get a struct's names, in UpperCamelCase string
 
 ### `get_struct_name_snake`
 ```rust
-fn get_struct_name_snake(&self) -> String;
+fn get_struct_name_snake(&self) -> String
 ```
 get a struct's names, in snake_case string  
 ex: SomeStructName -> some_struct_name
 
 ### `get_field_names`
 ```rust
-fn get_field_names(&self) -> Vec<'&'static str'>;
+fn get_field_names(&self) -> Vec<'&'static str'>
 ```
 get all struct's field names, in snake_case string
 
 ### `get_field_enums`
 ```rust
-fn get_field_enums(&self) -> Vec<StructNameFieldEnum>;
+fn get_field_enums(&self) -> Vec<StructNameFieldEnum>
 ```
 get all struct's field enums.
 
 ## Usage and Example
 
 ```rust
-#[macro_use(concat_string)]
-extern crate concat_string;
-
 use sqlx_binder::MySqlBinder;
 use sqlx::{
     mysql::{MySqlPoolOptions, MySqlConnectOptions},
@@ -184,13 +208,13 @@ async fn main() {
     let mut params = dof.get_field_enums();
 
     // INSERT QUERY
-    let sql = concat_string!(
-        "INSERT INTO ", struct_name, " (", 
-            field_names.join(","), 
+    let sql = [
+        "INSERT INTO ", &struct_name, " (", 
+            &field_names.join(","), 
         ") VALUES (",
-            vec!["?";field_names.len()].join(","),
+            &vec!["?";field_names.len()].join(","),
         ");"
-    );
+    ].join("");
     let mut query = sqlx::Query(&sql);
     for param in params {
         query = param.bind(query);
@@ -207,12 +231,12 @@ async fn main() {
     let name_removed = field_names.swap_remove(position);
     let param_removed = params.swap_remove(position);
 
-    let sql = concat_string!(
-        "UPDATE ", struct_name, 
-        " SET ", field_names.iter().map(|name| concat_string!(name, "=?")).collect::<Vec<String>>().join(","),
+    let sql = [
+        "UPDATE ", &struct_name, 
+        " SET ", &field_names.iter().map(|name| [name, "=?"].join("")).collect::<Vec<String>>().join(","),
         // use `where` name here
-        " WHERE ", name_removed, "=?;"
-    );
+        " WHERE ", &name_removed, "=?;"
+    ].join("");
     let mut query = sqlx::Query(&sql);
     for param in params {
         query = param.bind(query);

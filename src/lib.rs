@@ -89,6 +89,86 @@ pub fn derive(input: TokenStream) -> TokenStream {
                         pub fn get_field_enums(&self) -> Vec<#enumname> {
                             vec![#(#enumname::#idents_getenums(self.#idents_getenums.clone())),*]
                         }
+
+                        /// custom_column and custom_statement MUST match<br>
+                        /// custom_values MUST be string and match amount, ex:<br>
+                        /// - custom_column = `,create_user,create_datetime,update_user,update_datetime,version`<br>
+                        /// - custom_statement = `,?,now(),?,now(),1`<br>
+                        /// - custom_values = `&["username", "username"]`
+                        pub async fn insert(
+                            &self,
+                            primary_key: Option<&str>,
+                            custom_column: &str,
+                            custom_statement: &str,
+                            custom_values: &[&str],
+                            pool: &Pool<MySql>, db_name: &str,
+                        ) -> sqlx::Result<MySqlQueryResult> {
+                            
+                            let tbname = self.get_struct_name_snake();
+                            let mut keys = self.get_field_names();
+                            let mut params = self.get_field_enums();
+
+                            if let Some(pk) = primary_key {
+                                let position = keys.iter().position(|k| *k == pk)
+                                    .ok_or_else(|| sqlx::Error::ColumnNotFound(pk.to_string()))?;
+                                let _removed_keys = keys.swap_remove(position);
+                                let _removed_param = params.swap_remove(position);
+                            }
+
+                            let sql = [
+                                "INSERT INTO ", db_name, ".", &tbname, " (", 
+                                    &keys.join(","), custom_column, 
+                                ") VALUE (", 
+                                    &vec!["?"; keys.len()].join(","), custom_statement, 
+                                ");"
+                            ].join("");
+                            
+                            let mut query = sqlx::query(&sql);
+                            for param in params {
+                                query = param.bind(query);
+                            }
+                            for custom_value in custom_values {
+                                query = query.bind(custom_value);
+                            }
+                            query.execute(pool).await
+                        }
+
+                        /// custom_column and custom_values MUST be string and match amount, ex:<br>
+                        /// - custom_column = `,update_user=?,update_datetime=now(),version=1`<br>
+                        /// - custom_values = `&["username"]`
+                        pub async fn update(
+                            &self,
+                            primary_key: &str,
+                            custom_column: &str,
+                            custom_values: &[&str],
+                            pool: &Pool<MySql>, db_name: &str,
+                        ) -> sqlx::Result<MySqlQueryResult> {
+                            
+                            let tbname = self.get_struct_name_snake();
+                            let mut keys = self.get_field_names();
+                            let mut params = self.get_field_enums();
+                        
+                            let position = keys.iter().position(|k| *k == primary_key)
+                                .ok_or_else(|| sqlx::Error::ColumnNotFound(primary_key.to_string()))?;
+                            let removed_keys = keys.swap_remove(position);
+                            let removed_param = params.swap_remove(position);
+                        
+                            let sql = [
+                                "UPDATE ", db_name, ".", &tbname, " SET ", 
+                                &keys.iter().map(|k| [k, "=?"].join("")).collect::<Vec<String>>().join(","), custom_column,
+                                " WHERE ", removed_keys, "=?;"
+                            ].join("");
+                        
+                            let mut query = sqlx::query(&sql);
+                            for param in params {
+                                query = param.bind(query);
+                            }
+                            for custom_value in custom_values {
+                                query = query.bind(custom_value);
+                            }
+                            query = removed_param.bind(query);
+                            query.execute(pool).await
+                        }
                     }
 
                     #[derive(Debug, PartialEq, PartialOrd, Clone)]

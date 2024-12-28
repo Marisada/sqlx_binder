@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests_simple_struct {
 
+    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
@@ -92,6 +93,7 @@ mod tests_simple_struct {
 #[cfg(test)]
 mod tests_multiple_derive {
 
+    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
     use sqlx_binder::MySqlBinder;
 
     #[test]
@@ -130,7 +132,7 @@ mod tests_multiple_derive {
 #[cfg(test)]
 mod tests_binding {
 
-    use sqlx::{Arguments, Execute};
+    use sqlx::{Arguments, Execute, mysql::MySqlQueryResult, MySql, Pool};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
@@ -160,6 +162,7 @@ mod tests_binding {
 #[cfg(test)]
 mod tests_skip {
 
+    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
@@ -197,6 +200,7 @@ mod tests_skip {
 #[cfg(test)]
 mod tests_rename {
 
+    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
