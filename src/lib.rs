@@ -1,6 +1,6 @@
 use proc_macro::{self, TokenStream};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, AttrStyle, Attribute, DeriveInput, FieldsNamed, Ident, Meta};
+use syn::{AttrStyle, Attribute, DeriveInput, FieldsNamed, Ident, Meta, parse_macro_input};
 
 mod attrs;
 use attrs::{FieldAttribute, FieldAttributes};
@@ -13,24 +13,24 @@ pub fn derive(input: TokenStream) -> TokenStream {
         syn::Data::Struct(s) => match s.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 let mut named_mut = named.clone();
-                let idents_filtered = named.iter()
-                    .filter(|f| {
-                        let attrs = attributes(&f.attrs);
-                        match attrs.first() {
-                            Some(attr) => !matches!(attr, FieldAttribute::Skip),
-                            None => true,
+                let idents_filtered = named.iter().filter(|f| {
+                    let attrs = attributes(&f.attrs);
+                    match attrs.first() {
+                        Some(attr) => !matches!(attr, FieldAttribute::Skip),
+                        None => true,
+                    }
+                });
+                let idents_getfield = named_mut.iter_mut().filter_map(|f| {
+                    let attrs = attributes(&f.attrs);
+                    match attrs.first() {
+                        Some(FieldAttribute::Skip) => None,
+                        Some(FieldAttribute::Rename(val)) => {
+                            Some(f.ident.as_ref().map(|id| Ident::new(val, id.span())))
                         }
-                    });
-                let idents_getfield = named_mut.iter_mut()
-                    .filter_map(|f| {
-                        let attrs = attributes(&f.attrs);
-                        match attrs.first() {
-                            Some(FieldAttribute::Skip) => None,
-                            Some(FieldAttribute::Rename(val)) => Some(f.ident.as_ref().map(|id| Ident::new(val, id.span()))),
-                            _ => Some(f.ident.clone()),
-                        }
-                    });
-                
+                        _ => Some(f.ident.clone()),
+                    }
+                });
+
                 let idents_enum = idents_filtered.clone().map(|f| &f.ident);
                 let tys_enum = idents_filtered.clone().map(|f| &f.ty);
 
@@ -67,7 +67,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             // uppercase ASCII character.
                             let underscore_count = text.chars().skip(1).filter(|&c| c.is_ascii_uppercase()).count();
                             let mut result = String::with_capacity(text.len() + underscore_count);
-                        
+
                             for (i, c) in text.chars().enumerate() {
                                 if c.is_ascii_uppercase() {
                                     if i != 0 {
@@ -78,7 +78,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                                     result.push(c);
                                 }
                             }
-                        
+
                             result
                         }
 
@@ -90,21 +90,27 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             vec![#(#enumname::#idents_getenums(self.#idents_getenums.clone())),*]
                         }
 
-                        /// custom_column and custom_statement MUST match<br>
-                        /// custom_values MUST be string and match amount, ex:<br>
-                        /// - custom_column = `,create_user,create_datetime,update_user,update_datetime,version`<br>
-                        /// - custom_statement = `,?,now(),?,now(),1`<br>
-                        /// - custom_values = `&["username", "username"]`
+                        /// If `primary_key` is Some, will skip `primary_key` column.<br> 
+                        /// If `custom_table_name` is None, will use struct name as table_name (automatically convert `PascalCase` to `snake_case`).<br>
+                        /// - custom_table_name = `Some("some_table_name")`<br>
+                        /// `extra_column` and `extra_statement` MUST have the same amount and start with `,` (or "" for empty).<br>
+                        /// `extra_values` can be any type (MUST convert to `String` type) and have the same amount as `?` in `extra_column`.<br>
+                        /// - extra_column = `,create_user,create_datetime,update_user,update_datetime,version`<br>
+                        /// - extra_statement = `,?,now(),?,now(),1`<br>
+                        /// - extra_values = `&["username", "username"]`
+                        #[allow(clippy::too_many_arguments)]
                         pub async fn insert(
                             &self,
                             primary_key: Option<&str>,
-                            custom_column: &str,
-                            custom_statement: &str,
-                            custom_values: &[&str],
-                            pool: &Pool<MySql>, db_name: &str,
+                            custom_table_name: Option<&str>,
+                            extra_column: &str,
+                            extra_statement: &str,
+                            extra_values: &[&str],
+                            pool: &Pool<MySql>,
+                            db_name: &str,
                         ) -> sqlx::Result<MySqlQueryResult> {
-                            
-                            let tbname = self.get_struct_name_snake();
+
+                            let tbname = custom_table_name.map(|s| s.to_string()).unwrap_or(self.get_struct_name_snake());
                             let mut keys = self.get_field_names();
                             let mut params = self.get_field_enums();
 
@@ -116,55 +122,61 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             }
 
                             let sql = [
-                                "INSERT INTO ", db_name, ".", &tbname, " (", 
-                                    &keys.join(","), custom_column, 
-                                ") VALUE (", 
-                                    &vec!["?"; keys.len()].join(","), custom_statement, 
+                                "INSERT INTO ", db_name, ".", &tbname, " (",
+                                    &keys.join(","), extra_column,
+                                ") VALUE (",
+                                    &vec!["?"; keys.len()].join(","), extra_statement,
                                 ");"
                             ].join("");
-                            
+
                             let mut query = sqlx::query(&sql);
                             for param in params {
                                 query = param.bind(query);
                             }
-                            for custom_value in custom_values {
-                                query = query.bind(custom_value);
+                            for extra_value in extra_values {
+                                query = query.bind(extra_value);
                             }
                             query.execute(pool).await
                         }
 
-                        /// custom_column and custom_values MUST be string and match amount, ex:<br>
-                        /// - custom_column = `,update_user=?,update_datetime=now(),version=1`<br>
-                        /// - custom_values = `&["username"]`
+                        /// `primary_key` using for `WHERE` in sql.<br> 
+                        /// If `custom_table_name` is None, will use struct name as table_name (automatically convert `PascalCase` to `snake_case`)<br>
+                        /// - custom_table_name = `Some("some_table_name")`<br>
+                        /// `extra_column` MUST start with `,` (or "" for empty `extra_column`).<br>
+                        /// `extra_values` can be any type (MUST convert to `String` type) and have the same amount as `?` in `extra_column`.<br>
+                        /// - extra_column = `,update_user=?,update_datetime=now(),version=1`<br>
+                        /// - extra_values = `&["username"]`
                         pub async fn update(
                             &self,
                             primary_key: &str,
-                            custom_column: &str,
-                            custom_values: &[&str],
-                            pool: &Pool<MySql>, db_name: &str,
+                            custom_table_name: Option<&str>,
+                            extra_column: &str,
+                            extra_values: &[&str],
+                            pool: &Pool<MySql>,
+                            db_name: &str,
                         ) -> sqlx::Result<MySqlQueryResult> {
-                            
-                            let tbname = self.get_struct_name_snake();
+
+                            let tbname = custom_table_name.map(|s| s.to_string()).unwrap_or(self.get_struct_name_snake());
                             let mut keys = self.get_field_names();
                             let mut params = self.get_field_enums();
-                        
+
                             let position = keys.iter().position(|k| *k == primary_key)
                                 .ok_or_else(|| sqlx::Error::ColumnNotFound(primary_key.to_string()))?;
                             let removed_keys = keys.swap_remove(position);
                             let removed_param = params.swap_remove(position);
-                        
+
                             let sql = [
-                                "UPDATE ", db_name, ".", &tbname, " SET ", 
-                                &keys.iter().map(|k| [k, "=?"].join("")).collect::<Vec<String>>().join(","), custom_column,
+                                "UPDATE ", db_name, ".", &tbname, " SET ",
+                                &keys.iter().map(|k| [k, "=?"].join("")).collect::<Vec<String>>().join(","), extra_column,
                                 " WHERE ", removed_keys, "=?;"
                             ].join("");
-                        
+
                             let mut query = sqlx::query(&sql);
                             for param in params {
                                 query = param.bind(query);
                             }
-                            for custom_value in custom_values {
-                                query = query.bind(custom_value);
+                            for extra_value in extra_values {
+                                query = query.bind(extra_value);
                             }
                             query = removed_param.bind(query);
                             query.execute(pool).await
@@ -179,8 +191,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
                     impl #enumname {
                         pub fn bind(
-                            self, 
-                            query: sqlx::query::Query<'_, sqlx::MySql, sqlx::mysql::MySqlArguments>, 
+                            self,
+                            query: sqlx::query::Query<'_, sqlx::MySql, sqlx::mysql::MySqlArguments>,
                         ) -> sqlx::query::Query<'_, sqlx::MySql, sqlx::mysql::MySqlArguments> {
                             match self {
                                 #(#enumname::#idents_bind(p) => query.bind(p)),*

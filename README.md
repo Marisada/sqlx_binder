@@ -1,10 +1,21 @@
 # sqlx binder
-proc macro for binding struct field to sqlx's Query by generating StructFieldEnums to bind sqlx::Query in loop,
-useful when insert/update large struct
+Procedural Macros for binding struct field to SQLx's Query by generating `StructFieldEnums` to `bind` sqlx::Query in loop,
+useful when insert/update large struct.
 
-from Struct
+## Overview
+
+Add sqlx_binder and SQLx to your dependencies
+```toml
+sqlx_binder = { git = "https://github.com/marisada/sqlx_binder" }
+sqlx = { version = "0.8", features = [ "mysql", "runtime-tokio" ] }
+```
+
+Add `MySqlBinder` to your Struct
 
 ```rust
+use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
+use sqlx_binder::MySqlBinder;
+
 #[derive(MySqlBinder)]
 struct Dog {
     id: u32,
@@ -14,31 +25,51 @@ struct Dog {
 }
 ```
 
-will generate Enum
+Will implement `insert` and `update` methods and generate `StructNameFieldEnum` with `bind` method.
 
 ```rust
-enum DogFieldEnum {
+impl Dog {
+    pub fn insert(
+        &self,
+        primary_key: Option<&str>,
+        custom_table_name: Option<&str>,
+        extra_column: &str,
+        extra_statement: &str,
+        extra_values: &[&str],
+        pool: &Pool<MySql>,
+        db_name: &str,
+    ) -> sqlx::Result<MySqlQueryResult>;
+
+    pub fn update(&self,
+        primary_key: &str,
+        custom_table_name: Option<&str>,
+        extra_column: &str,
+        extra_values: &[&str],
+        pool: &Pool<MySql>,
+        db_name: &str,
+    ) -> sqlx::Result<MySqlQueryResult>;
+
+    pub fn get_enum(&self, field_string: &String) -> Result<DogFieldEnum, String>;
+    pub fn get_struct_name(&self) -> &'static str;
+    pub fn get_struct_name_snake(&self) -> String;
+    pub fn get_field_names(&self) -> Vec<&'static str>;
+    pub fn get_field_enums(&self) -> Vec<DogFieldEnum>;
+}
+
+pub enum DogFieldEnum {
     id(u32),
     name(String),
     age(u32),
     life_expectancy(u32),
 }
+
+impl DogFieldEnum {
+    pub fn bind(&self, query: sqlx::Query) -> sqlx::Query;
+}
 ```
 
-with `bind` method to bind `sqlx::Query` type as below
-```rust
-fn bind(&self, query: sqlx::Query) -> sqlx::Query;
-```
-instead of write `bind()` all fields like..
-```rust
-    let result = sqlx::Query(&sql)
-        .bind(&dog.id)
-        .bind(&dog.name)
-        .bind(&dog.age)
-        .bind(&dog.life_expectancy)
-        .execute(&pool).await?;
-```
-using `bind` to binding FieldEnum's value with sqlx's Query in loop like
+## Bind
+Binding FieldEnum's value with sqlx's Query in loop
 ```rust
     let params = dog.get_field_enums(); 
     let mut query = sqlx::query(&sql);
@@ -46,6 +77,58 @@ using `bind` to binding FieldEnum's value with sqlx's Query in loop like
         query = param.bind(query);
     }
     let result = query.execute(&pool).await?;
+```
+is the same as writing `bind()` to all fields
+```rust
+    let result = sqlx::query(&sql)
+        .bind(dog.id)
+        .bind(&dog.name)
+        .bind(dog.age)
+        .bind(dog.life_expectancy)
+        .execute(&pool).await?;
+```
+
+## Insert
+Insert struct into database with
+```rust
+let dog = Dog::new();
+let result = dog.insert(Some("id"), Some("tbl_dog"), ",color,breed", ",?,?", &["white","Poodle"], &pool, "animal").await?;
+```
+is the same as
+```rust
+let dog = Dog::new();
+let color = "white";
+let breed = "Poodle"
+let sql = "INSERT INTO animal.tbl_dog (name,age,life_expectancy,color,breed) VALUES (?,?,?,?,?);";
+let result = sqlx::query(&sql)
+    .bind(&dog.name)
+    .bind(dog.age)
+    .bind(dog.life_expectancy)
+    .bind(color)
+    .bind(breed)
+    .execute(&pool).await?;
+```
+
+## Update
+Update struct into database with
+```rust
+let dog = Dog::new();
+let result = dog.update("id", Some("tbl_dog"), ",color=?,breed=?", &["white","Poodle"], &pool, "animal").await?;
+```
+is the same as
+```rust
+let dog = Dog::load();
+let color = "white";
+let breed = "Poodle"
+let sql = "UPDATE animal.tbl_dog SET name=?,age=?,life_expectancy=?,color=?,breed=? WHERE id=?;";
+let result = sqlx::query(&sql)
+    .bind(&dog.name)
+    .bind(dog.age)
+    .bind(dog.life_expectancy)
+    .bind(color)
+    .bind(breed)
+    .bind(dog.id)
+    .execute(&pool).await?;
 ```
 
 ## Field Attributes
@@ -59,8 +142,8 @@ struct Dog {
     sex: u32,
 }
 ```
-get_field_names method will return ["name", "age", "gender"]
-> Note: DogFieldEnum of sex NOT change, still `DogFieldEnum::sex(u32)`
+get_field_names method will return `["name", "age", "gender"]`
+> Note: DogFieldEnum of sex will NOT change, still `DogFieldEnum::sex(u32)`
 
 ### skip
 ```rust
@@ -72,7 +155,7 @@ struct Dog {
     life_expectancy: u32,
 }
 ```
-will skip struct field 'life_expectancy' so we get DogFieldEnum like this
+will skip Struct field `life_expectancy` so we get DogFieldEnum like this
 ```rust
 enum DogFieldEnum {
     name(String),
@@ -81,71 +164,40 @@ enum DogFieldEnum {
 ```
 
 ## Struct Methods
-
-### `insert`
-```rust
-async fn insert( &self, primary_key: Option<&str>, custom_column: &str, custom_statement: &str, custom_values: &[&str], pool: &Pool<MySql>, db_name: &str) -> sqlx::Result<MySqlQueryResult>
-```
-insert to database using sql
-```sql
-    INSERT INTO pet_database.dog (name,age,life_expectancy,create_user,create_datetime) VALUE (?,?,?,?,now());
-```
-by calling `dog.insert()` like..
-```rust
-    let pool = MySqlPoolOptions::new().connect_with("mysql://user:pass@localhost:3306").await;
-    let result = dog.insert(Some("id"), ",create_user,create_datetime", ",?,now()", &["my_name"], pool, "pet_database").await.unwrap();
-    assert_eq!(result.rows_affected(), 1);
-```
-
-### `update`
-```rust
-async fn update(&self, primary_key: &str, custom_column: &str, custom_values: &[&str], pool: &Pool<MySql>, db_name: &str) -> sqlx::Result<MySqlQueryResult>
-```
-update to database using sql
-```sql
-    UPDATE pet_database.dog SET name=?,age=?,life_expectancy=?,update_user=?,update_datetime=now() WHERE id=?;
-```
-by calling `dog.update()` like..
-```rust
-    let pool = MySqlPoolOptions::new().connect_with("mysql://user:pass@localhost:3306").await;
-    let result = dog.update("id", ",update_user=?,update_datetime=now()", &["my_name"], pool, "pet_database").await.unwrap();
-    assert_eq!(result.rows_affected(), 1);
-```
-
-### `get_enum`
+### get_enum
 ```rust
 fn get_enum(&self, field_string: &String) -> Result<StructNameFieldEnum, String>
 ```
 get a single enum of field's value. Enum name is `Struct name` + `FieldEnum`.  
-with varients such as `MyStructFieldEnum::Name(String)` from MyStruct { name: String }
+with varients such as `MyStructFieldEnum::Name(String)` from `MyStruct { name: String }`
 
-### `get_struct_name`
+### get_struct_name
 ```rust
-fn get_struct_name(&self) -> '&'static str'
+fn get_struct_name(&self) -> &'static str
 ```
 get a struct's names, in UpperCamelCase string
 > most sql database converts all table names to lowercase on storage and lookup,  
-> so 'SomeStructName' will be 'somestructname'.. not 'some_struct_name'
-> but we need a snake_case one so look below
+> so `SomeStructName` will be `somestructname`, not `some_struct_name`
+> but we need a snake_case one by using `get_struct_name_snake` method below
 
-### `get_struct_name_snake`
+### get_struct_name_snake
 ```rust
 fn get_struct_name_snake(&self) -> String
 ```
-get a struct's names, in snake_case string  
-ex: SomeStructName -> some_struct_name
+get a Struct name, in snake_case string  
+ex: `SomeStructName` -> `some_struct_name`
 
-### `get_field_names`
+### get_field_names
 ```rust
-fn get_field_names(&self) -> Vec<'&'static str'>
+fn get_field_names(&self) -> Vec<&'static str>
 ```
-get all struct's field names, in snake_case string
+get all Struct's field names, in snake_case string
 
-### `get_field_enums`
+### get_field_enums
 ```rust
 fn get_field_enums(&self) -> Vec<StructNameFieldEnum>
 ```
-get all struct's field enums.
+get all Struct's field enums.
 
 ## Usage and Example
 
@@ -250,8 +302,5 @@ async fn main() {
 ```
 
 ## Inspiration
-- [Field Accessor](https://github.com/europeanplaice/field_accessor)  
-by Tomohiro Endo (europeanplaice@gmail.com)
-
-- [struct-field-names-as-array](https://github.com/jofas/struct_field_names_as_array)  
-by Jonas Fassbender (jonas@fc-web.de)
+- [Field Accessor](https://github.com/europeanplaice/field_accessor) by Tomohiro Endo (europeanplaice@gmail.com)
+- [struct-field-names-as-array](https://github.com/jofas/struct_field_names_as_array) by Jonas Fassbender (jonas@fc-web.de)

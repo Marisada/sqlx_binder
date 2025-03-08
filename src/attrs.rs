@@ -25,14 +25,12 @@ impl Parse for FieldAttributes {
 
             let meta = input.parse::<Meta>()?;
             match meta {
-                Meta::NameValue(MetaNameValue {
-                    path,
-                    value,
-                    ..
-                }) => if path.is_ident("rename") {
-                    if let Expr::Lit(expr_lit) = value {
-                        if let Lit::Str(val) = expr_lit.lit {
-                            attrs.push(FieldAttribute::Rename(val.value()))
+                Meta::NameValue(MetaNameValue { path, value, .. }) => {
+                    if path.is_ident("rename") {
+                        if let Expr::Lit(expr_lit) = value {
+                            if let Lit::Str(val) = expr_lit.lit {
+                                attrs.push(FieldAttribute::Rename(val.value()))
+                            }
                         }
                     }
                 }
@@ -41,8 +39,6 @@ impl Parse for FieldAttributes {
             }
         }
 
-        Ok(FieldAttributes {
-            attrs,
-        })
+        Ok(FieldAttributes { attrs })
     }
 }

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests_simple_struct {
 
-    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
+    use sqlx::{MySql, Pool, mysql::MySqlQueryResult};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
@@ -25,7 +25,6 @@ mod tests_simple_struct {
 
     #[test]
     fn test_get_struct_name_snake() {
-
         #[derive(MySqlBinder)]
         struct ThisIsStructName {
             name: String,
@@ -93,12 +92,11 @@ mod tests_simple_struct {
 #[cfg(test)]
 mod tests_multiple_derive {
 
-    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
+    use sqlx::{MySql, Pool, mysql::MySqlQueryResult};
     use sqlx_binder::MySqlBinder;
 
     #[test]
     fn test_multiple_derive() {
-        
         #[derive(MySqlBinder)]
         struct Test1 {
             pub name: String,
@@ -109,8 +107,12 @@ mod tests_multiple_derive {
             pub name: String,
         }
 
-        let test1 = Test1 { name: String::from("Taro")};
-        let test2 = Test2 { name: String::from("Jiro")};
+        let test1 = Test1 {
+            name: String::from("Taro"),
+        };
+        let test2 = Test2 {
+            name: String::from("Jiro"),
+        };
 
         let field1_names = test1.get_field_names();
         let mut field1_values = vec![];
@@ -125,14 +127,13 @@ mod tests_multiple_derive {
             field2_values.push(test2.get_enum(i).unwrap());
         }
         assert_eq!(field2_values[0], Test2FieldEnum::name("Jiro".to_string()));
-
     }
 }
 
 #[cfg(test)]
 mod tests_binding {
 
-    use sqlx::{Arguments, Execute, mysql::MySqlQueryResult, MySql, Pool};
+    use sqlx::{Arguments, Execute, MySql, Pool, mysql::MySqlQueryResult};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
@@ -150,19 +151,19 @@ mod tests_binding {
             life_expectancy: 9,
         };
         let params = dog.get_field_enums();
-        let mut query: sqlx::query::Query<'_, sqlx::MySql, sqlx::mysql::MySqlArguments> = sqlx::query("INSERT INTO dog VALUES (?,?,?)");
+        let mut query: sqlx::query::Query<'_, sqlx::MySql, sqlx::mysql::MySqlArguments> =
+            sqlx::query("INSERT INTO dog VALUES (?,?,?)");
         for param in params {
             query = param.bind(query);
-        } 
+        }
         assert_eq!(query.take_arguments().unwrap().unwrap().len(), 3);
     }
 }
 
-
 #[cfg(test)]
 mod tests_skip {
 
-    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
+    use sqlx::{MySql, Pool, mysql::MySqlQueryResult};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
@@ -196,11 +197,10 @@ mod tests_skip {
     }
 }
 
-
 #[cfg(test)]
 mod tests_rename {
 
-    use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
+    use sqlx::{MySql, Pool, mysql::MySqlQueryResult};
     use sqlx_binder::MySqlBinder;
 
     #[derive(MySqlBinder)]
