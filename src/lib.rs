@@ -181,6 +181,51 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             query = removed_param.bind(query);
                             query.execute(pool).await
                         }
+
+                        /// `primary_key` using for `WHERE` in sql.<br> 
+                        /// If `custom_table_name` is None, will use struct name as table_name (automatically convert `PascalCase` to `snake_case`)<br>
+                        /// - custom_table_name = `Some("some_table_name")`<br>
+                        /// `extra_column` MUST start with `,` (or "" for empty `extra_column`).<br>
+                        /// `extra_values` can be any type (MUST convert to `String` type) and have the same amount as `?` in `extra_column`.<br>
+                        /// - extra_column = `,update_user=?,update_datetime=now(),version=1`<br>
+                        /// - extra_values = `&["username"]`
+                        /// - create_user for `create_user=?`
+                        pub async fn update_by_creator(
+                            &self,
+                            primary_key: &str,
+                            custom_table_name: Option<&str>,
+                            extra_column: &str,
+                            extra_values: &[&str],
+                            create_user: &str,
+                            pool: &Pool<MySql>,
+                            db_name: &str,
+                        ) -> sqlx::Result<MySqlQueryResult> {
+
+                            let tbname = custom_table_name.map(|s| s.to_string()).unwrap_or(self.get_struct_name_snake());
+                            let mut keys = self.get_field_names();
+                            let mut params = self.get_field_enums();
+
+                            let position = keys.iter().position(|k| *k == primary_key)
+                                .ok_or_else(|| sqlx::Error::ColumnNotFound(primary_key.to_string()))?;
+                            let removed_keys = keys.swap_remove(position);
+                            let removed_param = params.swap_remove(position);
+
+                            let sql = [
+                                "UPDATE ", db_name, ".", &tbname, " SET ",
+                                &keys.iter().map(|k| [k, "=?"].join("")).collect::<Vec<String>>().join(","), extra_column,
+                                " WHERE ", removed_keys, "=? AND create_user=?;"
+                            ].join("");
+
+                            let mut query = sqlx::query(&sql);
+                            for param in params {
+                                query = param.bind(query);
+                            }
+                            for extra_value in extra_values {
+                                query = query.bind(extra_value);
+                            }
+                            query = removed_param.bind(query);
+                            query.bind(create_user).execute(pool).await
+                        }
                     }
 
                     #[derive(Debug, PartialEq, PartialOrd, Clone)]

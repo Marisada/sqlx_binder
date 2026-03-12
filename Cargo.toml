@@ -1,6 +1,6 @@
 [package]
 name = "sqlx_binder"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 authors = ["Marisada Pitakthum <p.marisada@gmail.com>"]
 description = "A procedural macro to get and set a struct field by String dynamically." 
