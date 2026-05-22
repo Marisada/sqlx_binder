@@ -7,7 +7,7 @@ useful when insert/update large struct.
 Add sqlx_binder and SQLx to your dependencies
 ```toml
 sqlx_binder = { git = "https://github.com/marisada/sqlx_binder" }
-sqlx = { version = "0.8", features = [ "mysql", "runtime-tokio" ] }
+sqlx = { version = "0.9", features = [ "mysql", "runtime-tokio" ] }
 ```
 
 Add `MySqlBinder` to your Struct

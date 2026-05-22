@@ -129,7 +129,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                                 ");"
                             ].join("");
 
-                            let mut query = sqlx::query(&sql);
+                            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
                             for param in params {
                                 query = param.bind(query);
                             }
@@ -171,7 +171,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                                 " WHERE ", removed_keys, "=?;"
                             ].join("");
 
-                            let mut query = sqlx::query(&sql);
+                            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
                             for param in params {
                                 query = param.bind(query);
                             }
@@ -216,7 +216,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
                                 " WHERE ", removed_keys, "=? AND create_user=?;"
                             ].join("");
 
-                            let mut query = sqlx::query(&sql);
+                            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql));
                             for param in params {
                                 query = param.bind(query);
                             }
